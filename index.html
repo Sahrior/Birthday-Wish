@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>3D Carousel — Neon Style</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#000; /* Dark background */
+    font-family:system-ui,Arial,Helvetica;
+    color:white;
+    overflow:hidden;
+  }
+
+  .banner{
+    width:100%;
+    min-height:100vh;
+    position:relative;
+    overflow: visible;
+    perspective:1000px;
+    perspective-origin:50% 45%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:28px;
+    padding: 32px 18px;
+  }
+
+  /* Robot model background */
+  .model {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    bottom: 0%;
+    transform: translate(-50%, -50%);
+    z-index: 0; /* Behind carousel */
+    pointer-events: none; /* Let clicks go through */
+  }
+
+  .model img {
+    max-height: 80vh;  /* Scale model height */
+    opacity: 0.95;     /* Optional: slight transparency */
+  }
+
+  .slider{
+    --card-w: 300px;
+    --card-h: 200px;
+    width:var(--card-w);
+    height:var(--card-h);
+    position: relative;
+    transform-style: preserve-3d;
+    transform-origin: center center;
+    transform: rotateX(-12deg);
+    pointer-events:none;
+    z-index: 1; /* In front of model */
+  }
+
+  .slider .item{
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:var(--card-w);
+    height:var(--card-h);
+    transform-style: preserve-3d;
+    transform-origin:center center;
+    will-change: transform, filter;
+    pointer-events:auto; /* Enable hover */
+  }
+
+  .slider .item img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+    border-radius:12px;
+    transform: translate(-50%,-50%);
+    position:absolute;
+    left:50%;
+    top:50%;
+    backface-visibility:hidden;
+    transition: 
+      filter 250ms ease, 
+      transform 250ms ease, 
+      opacity 250ms ease, 
+      box-shadow 250ms ease;
+    
+    /* Neon Border */
+    box-shadow: 
+      0 0 12px #00f7ff,
+      0 0 24px #00f7ff,
+      0 0 36px #00f7ff;
+  }
+
+  /* Hover effect */
+  .slider .item:hover img{
+    transform: translate(-50%,-50%) scale(1.15);
+    box-shadow: 
+      0 0 20px #00f7ff,
+      0 0 40px #00f7ff,
+      0 0 60px #00f7ff,
+      0 0 80px #00f7ff;
+    filter: brightness(1.1);
+    z-index: 999; /* Bring hovered image to front */
+  }
+
+  .caption{ 
+    text-align:center; 
+    z-index:2; 
+    margin-top: 40px;
+  }
+  
+  .caption h1{
+    font-size:32px;
+    color:#fff;
+    margin-bottom:12px;
+    text-shadow:
+      0 0 5px #ff00de,
+      0 0 10px #ff00de,
+      0 0 20px #ff00de,
+      0 0 40px #ff00de;
+    animation: flicker 2s infinite alternate;
+  }
+
+  .caption p{
+    font-size:20px;
+    color:#0ff;
+    text-shadow:
+      0 0 5px #0ff,
+      0 0 10px #0ff,
+      0 0 20px #0ff,
+      0 0 30px #0ff;
+  }
+
+  @keyframes flicker {
+    from { opacity: 1; }
+    to { opacity: 0.85; }
+  }
+
+  @media (max-width:1024px){
+    .slider{ --card-w: 220px; --card-h: 160px; }
+  }
+  @media (max-width:767px){
+    .slider{ --card-w: 160px; --card-h: 110px; }
+  }
+  @media (max-width:420px){
+    .slider{ --card-w: 140px; --card-h: 100px; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="banner">
+
+    <!-- Robot model behind carousel -->
+    <div class="model">
+      <img src="model.png" alt="Model">
+    </div>
+
+    <!-- 3D Slider -->
+    <div class="slider" id="slider">
+      <div class="item"><img src="gaandu1.jpeg" alt=""></div>
+      <div class="item"><img src="gaandu2.jpeg" alt=""></div>
+      <div class="item"><img src="gaandu3.jpeg" alt=""></div>
+      <div class="item"><img src="gaandu4.jpeg" alt=""></div>
+      <div class="item"><img src="gaandu8.jpeg" alt=""></div>
+      <div class="item"><img src="gaandu10.jpeg" alt=""></div>
+    </div>
+
+    <!-- Caption -->
+    <div class="caption">
+      <h1>Happy Birthday Gaanndu 🎉</h1>
+      <p id="timePassed">Calculating...</p>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const slider = document.getElementById('slider');
+  const items = Array.from(slider.querySelectorAll('.item'));
+  const qty = items.length;
+  const SPEED = 20;
+  const EDGE_MARGIN = 18;
+
+  function getCardSizes(){
+    const cs = getComputedStyle(slider);
+    const cw = parseFloat(cs.getPropertyValue('--card-w')) || 300;
+    const ch = parseFloat(cs.getPropertyValue('--card-h')) || 200;
+    return {cw,ch};
+  }
+
+  function radiusForNoOverlap(cardW, n, safety = 1.05){
+    if (n <= 1) return cardW * 0.6;
+    const requiredChord = cardW * safety;
+    return requiredChord / (2 * Math.sin(Math.PI / n));
+  }
+
+  function availableRadiusForViewport(cardW){
+    return Math.max((window.innerWidth / 2) - (cardW / 2) - EDGE_MARGIN, cardW * 0.4);
+  }
+
+  function clampRadius(r, cardW, cardH){
+    const avail = availableRadiusForViewport(cardW);
+    const maxR = Math.max(avail, cardW * 0.5);
+    const minR = Math.max((Math.max(cardW, cardH) * 0.9), 40);
+    return Math.max(minR, Math.min(r, maxR));
+  }
+
+  let {cw: CARD_W, ch: CARD_H} = getCardSizes();
+  let RADIUS = Math.round(Math.max(CARD_W, CARD_H) * 1.05);
+
+  function recalc(){
+    const sizes = getCardSizes();
+    CARD_W = sizes.cw; CARD_H = sizes.ch;
+    const mathR = radiusForNoOverlap(CARD_W, qty, 1.06);
+    const heuristic = Math.max(Math.max(CARD_W, CARD_H) * 0.9, mathR);
+    RADIUS = Math.round(clampRadius(heuristic, CARD_W, CARD_H));
+    items.forEach((item, i) => {
+      const baseAngle = (i) * (360 / qty);
+      item.dataset.base = baseAngle;
+      item.style.transform = `translate(-50%,-50%) rotateY(${baseAngle}deg) translateZ(${RADIUS}px)`;
+    });
+  }
+
+  recalc();
+  window.addEventListener('resize', recalc);
+
+  let last = performance.now();
+  let spin = 0;
+  let running = true;
+
+  slider.addEventListener('mouseenter', () => running = false);
+  slider.addEventListener('mouseleave', () => running = true);
+
+  function frame(now){
+    const dt = (now - last) / 1000;
+    last = now;
+    if (running){
+      spin = (spin + SPEED * dt) % 360;
+      slider.style.transform = `rotateX(-12deg) rotateY(${spin}deg)`;
+    }
+    items.forEach((item, i) => {
+      const baseAngle = parseFloat(item.dataset.base) || (i*(360/qty));
+      const facing = ((baseAngle + spin) % 360 + 360) % 360;
+      const frontFactor = Math.cos(facing * Math.PI / 180);
+      const brightness = 0.65 + 0.35 * (frontFactor * 0.5 + 0.5);
+      const scale = 0.82 + 0.18 * (frontFactor * 0.5 + 0.5);
+      const opacity = 0.7 + 0.3 * (frontFactor * 0.5 + 0.5);
+
+      const img = item.querySelector('img');
+      if (img && !item.matches(':hover')){
+        img.style.filter = `brightness(${brightness})`;
+        img.style.opacity = opacity;
+        img.style.transform = `translate(-50%,-50%) scale(${scale})`;
+      }
+      item.style.zIndex = Math.round(100 + frontFactor * 100);
+    });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // Live time since 29 Sep 2006
+  function updateTimePassed(){
+    const birthDate = new Date("2006-09-29T00:00:00");
+    const now = new Date();
+    let diff = now - birthDate;
+
+    const days = Math.floor(diff / (1000*60*60*24));
+    diff %= (1000*60*60*24);
+    const hours = Math.floor(diff / (1000*60*60));
+    diff %= (1000*60*60);
+    const minutes = Math.floor(diff / (1000*60));
+    diff %= (1000*60);
+    const seconds = Math.floor(diff / 1000);
+
+    document.getElementById("timePassed").textContent =
+      `${days} days, ${hours} hours, ${minutes} minutes, ${seconds} seconds`;
+  }
+  setInterval(updateTimePassed, 1000);
+  updateTimePassed();
+
+})();
+</script>
+
+</body>
+</html>
